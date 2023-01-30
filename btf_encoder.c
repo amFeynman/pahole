@@ -30,6 +30,7 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <pthread.h>
 
 struct elf_function {
 	const char	*name;
@@ -79,20 +80,28 @@ struct btf_encoder {
 	} functions;
 };
 
-void btf_encoders__add(struct list_head *encoders, struct btf_encoder *encoder)
+static LIST_HEAD(encoders);
+static pthread_mutex_t encoders__lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* mutex only needed for add/delete, as this can happen in multiple encoding
+ * threads.  Traversal of the list is currently confined to thread collection.
+ */
+static void btf_encoders__add(struct btf_encoder *encoder)
 {
-	list_add_tail(&encoder->node, encoders);
+	pthread_mutex_lock(&encoders__lock);
+	list_add_tail(&encoder->node, &encoders);
+	pthread_mutex_unlock(&encoders__lock);
 }
 
-struct btf_encoder *btf_encoders__first(struct list_head *encoders)
+static void btf_encoders__delete(struct btf_encoder *encoder)
 {
-	return list_first_entry(encoders, struct btf_encoder, node);
+	pthread_mutex_lock(&encoders__lock);
+	list_del(&encoder->node);
+	pthread_mutex_unlock(&encoders__lock);
 }
 
-struct btf_encoder *btf_encoders__next(struct btf_encoder *encoder)
-{
-	return list_next_entry(encoder, node);
-}
+#define btf_encoders__for_each_encoder(encoder)			\
+	list_for_each_entry(encoder, &encoders, node)
 
 #define PERCPU_SECTION ".data..percpu"
 
@@ -1505,6 +1514,7 @@ struct btf_encoder *btf_encoder__new(struct cu *cu, const char *detached_filenam
 
 		if (encoder->verbose)
 			printf("File %s:\n", cu->filename);
+		btf_encoders__add(encoder);
 	}
 out:
 	return encoder;
@@ -1519,6 +1529,7 @@ void btf_encoder__delete(struct btf_encoder *encoder)
 	if (encoder == NULL)
 		return;
 
+	btf_encoders__delete(encoder);
 	__gobuffer__delete(&encoder->percpu_secinfo);
 	zfree(&encoder->filename);
 	btf__free(encoder->btf);
