@@ -35,7 +35,6 @@
 
 struct elf_function {
 	const char	*name;
-	bool		 generated;
 	size_t		prefixlen;
 };
 
@@ -705,6 +704,9 @@ int32_t btf_encoder__add_encoder(struct btf_encoder *encoder, struct btf_encoder
 	int32_t i, id;
 	struct btf_var_secinfo *vsi;
 
+	/* saved functions are added to each encoder's BTF prior to it
+	 * being merged with the parent encoder.
+	 */
 	btf_encoder__add_saved_funcs(other);
 	if (encoder == other)
 		return 0;
@@ -792,10 +794,71 @@ static int function__compare(const void *a, const void *b)
 	return strcmp(function__name(fa), function__name(fb));
 }
 
+#define BTF_ENCODER_MAX_PARAMETERS	12
+
 struct btf_encoder_state {
 	struct btf_encoder *encoder;
 	uint32_t type_id_off;
+	bool got_parameter_names;
+	const char *parameter_names[BTF_ENCODER_MAX_PARAMETERS];
 };
+
+static void parameter_names__get(struct ftype *ftype, size_t nr_parameters,
+		     const char **parameter_names)
+{
+	struct parameter *parameter;
+	int i = 0;
+
+	ftype__for_each_parameter(ftype, parameter) {
+		if (i >= nr_parameters)
+			break;
+		parameter_names[i++] = parameter__name(parameter);
+	}
+}
+
+static bool funcs__match(struct function *f1, struct function *f2)
+{
+
+	const char *parameter_names[BTF_ENCODER_MAX_PARAMETERS];
+	struct btf_encoder_state *state = f1->priv;
+	const char *name = function__name(f1);
+	int i;
+
+	if (!state)
+		return false;
+
+	if (f1->proto.nr_parms != f2->proto.nr_parms) {
+		if (state->encoder->verbose)
+			printf("function mismatch for '%s'(%s): %d params != %d params\n",
+			       name, f1->alias ?: name,
+			       f1->proto.nr_parms, f2->proto.nr_parms);
+		return false;
+	}
+
+	if (!state->got_parameter_names) {
+		parameter_names__get(&f1->proto, BTF_ENCODER_MAX_PARAMETERS,
+				     state->parameter_names);
+		state->got_parameter_names = true;
+	}
+	parameter_names__get(&f2->proto, BTF_ENCODER_MAX_PARAMETERS, parameter_names);
+	for (i = 0; i < f1->proto.nr_parms && i < BTF_ENCODER_MAX_PARAMETERS; i++) {
+		if (!state->parameter_names[i]) {
+			if (!parameter_names[i])
+				continue;
+		} else if (parameter_names[i]) {
+			if (strcmp(state->parameter_names[i], parameter_names[i]) == 0)
+				continue;
+		}
+		if (state->encoder->verbose)
+			printf("function mismatch for '%s'(%s): parameter #%d '%s' != '%s'\n",
+			       name, f1->alias ?: name, i,
+			       state->parameter_names[i] ?: "<null>",
+			       parameter_names[i] ?: "<null>");
+
+		return false;
+	}
+	return true;
+}
 
 static void btf_encoder__merge_func(struct btf_encoder *encoder, struct function *fn)
 {
@@ -809,6 +872,9 @@ static void btf_encoder__merge_func(struct btf_encoder *encoder, struct function
 	 */
 	fn->proto.optimized_parms |= (*nodep)->proto.optimized_parms;
 	(*nodep)->proto.optimized_parms |= fn->proto.optimized_parms;
+	if ((fn->proto.inconsistent_proto || (*nodep)->proto.inconsistent_proto) ||
+	    !funcs__match(fn, *nodep))
+		(*nodep)->proto.inconsistent_proto = fn->proto.inconsistent_proto = 1;
 	(*nodep)->proto.processed = 1;
 }
 
@@ -819,19 +885,22 @@ static int32_t btf_encoder__save_func(struct btf_encoder *encoder, struct functi
 
 	nodep = tsearch(fn, &encoder->saved_func_tree, function__compare);
 	if (nodep == NULL) {
-		fprintf(stderr, "error: out of memory adding static function '%s'\n",
+		fprintf(stderr, "error: out of memory adding function '%s'\n",
 			name);
 		return -1;
 	}
 	/* If saving and we find an existing entry, we want to merge
 	 * observations across both functions, checking that the
-	 * "seen optimized parameters" status is reflected in our tree entry.
+	 * "seen optimized parameters" and inconsistent prototype
+	 * status is reflected in our tree entry.
 	 * If the entry is new, record encoder state required
 	 * to add the local function later (encoder + type_id_off)
 	 * such that we can add the function later.
 	 */
 	if (*nodep != fn) {
 		(*nodep)->proto.optimized_parms |= fn->proto.optimized_parms;
+		if (!funcs__match(*nodep, fn))
+			(*nodep)->proto.inconsistent_proto = fn->proto.inconsistent_proto = 1;
 	} else {
 		struct btf_encoder_state *state = zalloc(sizeof(*state));
 
@@ -902,12 +971,14 @@ static void btf_encoder__add_saved_func(const void *nodep, const VISIT which,
 			btf_encoder__merge_func(other_encoder, fn);
 	}
 
-	if (fn->proto.optimized_parms) {
+	if (fn->proto.optimized_parms || fn->proto.inconsistent_proto) {
 		if (encoder->verbose) {
 			const char *name = function__name(fn);
 
-			printf("skipping addition of '%s'(%s) due to optimized-out parameters\n",
-			       name, fn->alias ?: name);
+			printf("skipping addition of '%s'(%s) due to %s\n",
+			       name, fn->alias ?: name,
+			       fn->proto.optimized_parms ? "optimized-out parameters" :
+							   "multiple inconsistent function prototypes");
 		}
 	} else {
 		btf_encoder__add_func(encoder, fn);
@@ -988,7 +1059,6 @@ static int btf_encoder__collect_function(struct btf_encoder *encoder, GElf_Sym *
 		encoder->functions.suffix_cnt++;
 		encoder->functions.entries[encoder->functions.cnt].prefixlen = suffix - name;
 	}
-	encoder->functions.entries[encoder->functions.cnt].generated = false;
 	encoder->functions.cnt++;
 	return 0;
 }
@@ -1776,8 +1846,6 @@ int btf_encoder__encode_cu(struct btf_encoder *encoder, struct cu *cu, struct co
 	}
 
 	cu__for_each_function(cu, core_id, fn) {
-		bool save = false;
-
 		/*
 		 * Skip functions that:
 		 *   - are marked as declarations
@@ -1799,11 +1867,7 @@ int btf_encoder__encode_cu(struct btf_encoder *encoder, struct cu *cu, struct co
 
 			/* prefer exact function name match... */
 			func = btf_encoder__find_function(encoder, name, 0);
-			if (func) {
-				if (func->generated)
-					continue;
-				func->generated = true;
-			} else if (encoder->functions.suffix_cnt) {
+			if (!func && encoder->functions.suffix_cnt) {
 				/* falling back to name.isra.0 match if no exact
 				 * match is found; only bother if we found any
 				 * .suffix function names.  The function
@@ -1814,7 +1878,7 @@ int btf_encoder__encode_cu(struct btf_encoder *encoder, struct cu *cu, struct co
 				func = btf_encoder__find_function(encoder, name,
 								  strlen(name));
 				if (func) {
-					save = true;
+					fn->alias = func->name;
 					if (encoder->verbose)
 						printf("matched function '%s' with '%s'%s\n",
 						       name, func->name,
@@ -1824,16 +1888,12 @@ int btf_encoder__encode_cu(struct btf_encoder *encoder, struct cu *cu, struct co
 			}
 			if (!func)
 				continue;
-			fn->alias = func->name;
 		} else {
 			if (!fn->external)
 				continue;
 		}
 
-		if (save)
-			err = btf_encoder__save_func(encoder, fn);
-		else
-			err = btf_encoder__add_func(encoder, fn);
+		err = btf_encoder__save_func(encoder, fn);
 		if (err)
 			goto out;
 	}
