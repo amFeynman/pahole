@@ -1,0 +1,5 @@
+#!/bin/bash
+FEYNMAN_TOP_DIR=$(git rev-parse --show-toplevel)
+alias mk='cd ${FEYNMAN_TOP_DIR}/; ./buildcmd.sh'
+alias pg='${FEYNMAN_TOP_DIR}/build/pahole -G -C page vmlinux'
+alias wpg='echo ${FEYNMAN_TOP_DIR}/build/pahole -G -C page vmlinux'
