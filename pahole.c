@@ -1445,6 +1445,11 @@ static const struct argp_option pahole__options[] = {
 		.doc  = "be quieter",
 	},
 	{
+		.name = "graph",
+		.key  = 'G',
+		.doc  = "create graph",
+	},
+	{
 		.name = "defined_in",
 		.key  = 'u',
 		.doc  = "show CUs where CLASS_NAME (-C) is defined",
@@ -1715,6 +1720,11 @@ static error_t pahole__options_parser(int key, char *arg,
 	case 'q': conf.emit_stats = 0;
 		  conf.suppress_comments = 1;
 		  conf.suppress_offset_comment = 1;	break;
+	case 'G': conf.emit_stats = 0;
+		  conf.suppress_comments = 1;
+		  conf.suppress_offset_comment = 0;
+		  conf.enable_graph = 1;
+		  break;
 	case 'R': reorganize = 1;			break;
 	case 'r': conf.rel_offset = 1;			break;
 	case 'S': show_reorg_steps = 1;			break;
