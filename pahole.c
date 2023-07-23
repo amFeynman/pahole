@@ -1724,6 +1724,10 @@ static error_t pahole__options_parser(int key, char *arg,
 		  conf.suppress_comments = 1;
 		  conf.suppress_offset_comment = 0;
 		  conf.enable_graph = 1;
+		  conf.classes_as_structs = 1; /* class as struct */
+		  conf.suppress_packed = 1; /* disable packed attribute */
+		  conf.suppress_aligned_attribute = 1; /* disable align attribute */
+		  conf.suppress_force_paddings = 1; /* disable force padding */
 		  break;
 	case 'R': reorganize = 1;			break;
 	case 'r': conf.rel_offset = 1;			break;

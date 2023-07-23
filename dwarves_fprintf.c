@@ -1483,14 +1483,26 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 	const char *current_accessibility = NULL;
 	struct conf_fprintf cconf = conf ? *conf : conf_fprintf__defaults;
 	const uint16_t t = type->namespace.tag.tag;
-	size_t printed = fprintf(fp, "%s%s%s%s%s",
-				 cconf.prefix ?: "", cconf.prefix ? " " : "",
-				 ((cconf.classes_as_structs ||
-				   t == DW_TAG_structure_type) ? "struct" :
-				  t == DW_TAG_class_type ? "class" :
-							"interface"),
-				 type__name(type) ? " " : "",
-				 type__name(type) ?: "");
+	size_t printed;
+	if (cconf.enable_graph) {
+		printed = fprintf(fp, "STRUCT_START%sSTNAME_START%s%s%s%sSTNAME_END",
+			 cconf.prefix ?: "", cconf.prefix ? " " : "",
+			 ((cconf.classes_as_structs ||
+			   t == DW_TAG_structure_type) ? "struct" :
+			  t == DW_TAG_class_type ? "class" :
+						"interface"),
+			 type__name(type) ? " " : "",
+			 type__name(type) ?: "");
+	} else {
+		printed = fprintf(fp, "%s%s%s%s%s",
+					 cconf.prefix ?: "", cconf.prefix ? " " : "",
+					 ((cconf.classes_as_structs ||
+					   t == DW_TAG_structure_type) ? "struct" :
+					  t == DW_TAG_class_type ? "class" :
+								"interface"),
+					 type__name(type) ? " " : "",
+					 type__name(type) ?: "");
+	}
 	int indent = cconf.indent;
 
 	if (indent >= (int)sizeof(tabs))
@@ -1534,7 +1546,10 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 			printed += tag__id_not_found_fprintf(fp, tag_pos->type);
 	}
 
-	printed += fprintf(fp, " {\n");
+	if (cconf.enable_graph)
+		printed += fprintf(fp, " [label=\n");
+	else
+		printed += fprintf(fp, " {\n");
 
 	if (class->pre_bit_hole > 0 && !cconf.suppress_comments) {
 		if (!newline++) {
@@ -1885,7 +1900,11 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 				   cconf.indent, tabs,
 				   type->size, sum_bytes, sum_bits, sum_holes, sum_bit_holes, size_diff);
 out:
-	printed += fprintf(fp, "%.*s}", indent, tabs);
+	if (cconf.enable_graph) {
+		printed += fprintf(fp, "%.*sSTRUCT_END ]", indent, tabs);
+	} else {
+		printed += fprintf(fp, "%.*s}", indent, tabs);
+	}
 
 	if (class->is_packed && !cconf.suppress_packed)
 		printed += fprintf(fp, " __attribute__((__packed__))");
