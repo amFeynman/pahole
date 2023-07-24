@@ -1007,12 +1007,17 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 				slen += packed_len;
 			}
 
-			printed += fprintf(fp, sconf.hex_fmt ?
-							"%*s/* %#5x" :
-							"%*s/* %5u",
-					   (sconf.type_spacing +
-					    sconf.name_spacing - slen - 3),
-					   " ", offset);
+			if (conf->enable_graph)
+					printed += fprintf(fp, sconf.hex_fmt ?
+									"/*%x_" :
+									"/*%u_", offset);
+			else
+					printed += fprintf(fp, sconf.hex_fmt ?
+									"%*s/* %#5x" :
+									"%*s/* %5u",
+									(sconf.type_spacing +
+									 sconf.name_spacing - slen - 3),
+									" ", offset);
 
 			if (member->bitfield_size != 0) {
 				unsigned int bitfield_offset = member->bitfield_offset;
@@ -1024,7 +1029,10 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 				size_spacing -= 3;
 			}
 
-			printed += fprintf(fp, sconf.hex_fmt ?  " %#*x */" : " %*u */", size_spacing, size);
+			if (conf->enable_graph)
+					printed += fprintf(fp, sconf.hex_fmt ?  "%x*/" : "%u*/", size);
+			else
+					printed += fprintf(fp, sconf.hex_fmt ?  " %#*x */" : " %*u */", size_spacing, size);
 		}
 	} else {
 		int spacing = sconf.type_spacing + sconf.name_spacing - printed;
@@ -1037,10 +1045,15 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 		if (!sconf.suppress_offset_comment) {
 			int size_spacing = 5;
 
-			printed += fprintf(fp, sconf.hex_fmt ?
-						"%*s/* %#5x" : "%*s/* %5u",
-					   spacing > 0 ? spacing : 0, " ",
-					   offset);
+			if (conf->enable_graph)
+					printed += fprintf(fp, sconf.hex_fmt ?
+									"/*%x_" : "/*%u_",
+									offset);
+			else
+					printed += fprintf(fp, sconf.hex_fmt ?
+									"%*s/* %#5x" : "%*s/* %5u",
+									spacing > 0 ? spacing : 0, " ",
+									offset);
 
 			if (member->bitfield_size != 0) {
 				unsigned int bitfield_offset = member->bitfield_offset;
@@ -1054,9 +1067,14 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 				size_spacing -= 3;
 			}
 
-			printed += fprintf(fp, sconf.hex_fmt ?
-						" %#*x */" : " %*u */",
-					   size_spacing, size);
+			if (conf->enable_graph)
+					printed += fprintf(fp, sconf.hex_fmt ?
+									"%x*/" : "%u*/",
+									size);
+			else
+					printed += fprintf(fp, sconf.hex_fmt ?
+									" %#*x */" : " %*u */",
+									size_spacing, size);
 		}
 	}
 	return printed + printed_cacheline;
