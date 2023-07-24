@@ -941,7 +941,12 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 	size_t printed = 0, printed_cacheline = 0;
 	const char *cm_name = class_member__name(member),
 		   *name = cm_name;
+	int size_printed = 0;
 
+	if (conf->enable_graph && !size_printed)
+		goto size_print;
+
+member_print:
 	if (!sconf.rel_offset) {
 		offset += sconf.base_offset;
 		if (!union_member)
@@ -969,6 +974,7 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 	if (tag__is_union(type) || tag__is_struct(type) ||
 	    tag__is_enumeration(type)) {
 		printed += type__fprintf(type, cu, NULL, &sconf, fp);
+
 		if (name) {
 			if (!type__name(tag__type(type)))
 				printed += fprintf(fp, " ");
@@ -990,7 +996,14 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 		printed += member_alignment_printed;
 	}
 
-	fputc(';', fp);
+	if (conf->enable_graph)
+		fputc('|', fp);
+	else
+		fputc(';', fp);
+
+	if (size_printed && conf->enable_graph)
+		goto end_print;
+size_print:
 	++printed;
 
 	if ((tag__is_union(type) || tag__is_struct(type) ||
@@ -1009,8 +1022,8 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 
 			if (conf->enable_graph)
 					printed += fprintf(fp, sconf.hex_fmt ?
-									"/*%x_" :
-									"/*%u_", offset);
+									"/*%x%s" :
+									"/*%u%s", offset, member->bitfield_size ? "":"_");
 			else
 					printed += fprintf(fp, sconf.hex_fmt ?
 									"%*s/* %#5x" :
@@ -1025,12 +1038,15 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 				if (member->bitfield_offset < 0)
 					bitfield_offset = member->byte_size * 8 + member->bitfield_offset;
 
-				printed += fprintf(fp, sconf.hex_fmt ?  ":%#2x" : ":%2u", bitfield_offset);
+				if (conf->enable_graph)
+					printed += fprintf(fp, sconf.hex_fmt ?  ":%#x_" : ":%u_", bitfield_offset);
+				else
+					printed += fprintf(fp, sconf.hex_fmt ?  ":%#2x" : ":%2u", bitfield_offset);
 				size_spacing -= 3;
 			}
 
 			if (conf->enable_graph)
-					printed += fprintf(fp, sconf.hex_fmt ?  "%x*/" : "%u*/", size);
+					printed += fprintf(fp, sconf.hex_fmt ?  "%x*/" : "%u*/ ", size);
 			else
 					printed += fprintf(fp, sconf.hex_fmt ?  " %#*x */" : " %*u */", size_spacing, size);
 		}
@@ -1047,8 +1063,8 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 
 			if (conf->enable_graph)
 					printed += fprintf(fp, sconf.hex_fmt ?
-									"/*%x_" : "/*%u_",
-									offset);
+									"/*%x%s" : "/*%u%s",
+									offset, member->bitfield_size ? "":"_");
 			else
 					printed += fprintf(fp, sconf.hex_fmt ?
 									"%*s/* %#5x" : "%*s/* %5u",
@@ -1060,16 +1076,16 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 
 				if (member->bitfield_offset < 0)
 					bitfield_offset = member->byte_size * 8 + member->bitfield_offset;
-
-				printed += fprintf(fp, sconf.hex_fmt ?
-							":%#2x" : ":%2u",
-						   bitfield_offset);
+				if (conf->enable_graph)
+					printed += fprintf(fp, sconf.hex_fmt ? ":%#x_" : ":%u_", bitfield_offset);
+				else
+					printed += fprintf(fp, sconf.hex_fmt ? ":%#2x" : ":%2u", bitfield_offset);
 				size_spacing -= 3;
 			}
 
 			if (conf->enable_graph)
 					printed += fprintf(fp, sconf.hex_fmt ?
-									"%x*/" : "%u*/",
+									"%x*/" : "%u*/ ",
 									size);
 			else
 					printed += fprintf(fp, sconf.hex_fmt ?
@@ -1077,6 +1093,12 @@ static size_t class_member__fprintf(struct class_member *member, bool union_memb
 									size_spacing, size);
 		}
 	}
+
+	if (conf->enable_graph) {
+		size_printed = 1;
+		goto member_print;
+	}
+end_print:
 	return printed + printed_cacheline;
 }
 
