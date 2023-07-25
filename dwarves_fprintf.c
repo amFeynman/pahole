@@ -834,9 +834,14 @@ next_type:
 	}
 	default:
 print_default:
-		printed += fprintf(fp, "%-*s %s", tconf.type_spacing,
+		if (conf->enable_graph)
+			printed += fprintf(fp, "`%-*s` %s", 0,
 				   tag__name(type, cu, tbf, sizeof(tbf), &tconf),
 				   name);
+		else
+			printed += fprintf(fp, "%-*s %s", tconf.type_spacing,
+					   tag__name(type, cu, tbf, sizeof(tbf), &tconf),
+					   name);
 		break;
 	case DW_TAG_subroutine_type:
 		printed += ftype__fprintf(tag__ftype(type), cu, name, 0, 0,
@@ -873,11 +878,18 @@ print_modifier: {
 		ctype = tag__type(type);
 
 		if (type__name(ctype) != NULL && !expand_types) {
-			printed += fprintf(fp, "%s %-*s %s",
-					   (type->tag == DW_TAG_class_type &&
-					    !tconf.classes_as_structs) ? "class" : "struct",
-					   tconf.type_spacing - 7,
-					   type__name(ctype), name ?: "");
+			if (conf->enable_graph)
+				printed += fprintf(fp, "`%s %-*s` %s",
+						   (type->tag == DW_TAG_class_type &&
+						    !tconf.classes_as_structs) ? "class" : "struct",
+						   0,
+						   type__name(ctype), name ?: "");
+			else
+				printed += fprintf(fp, "%s %-*s %s",
+						   (type->tag == DW_TAG_class_type &&
+							!tconf.classes_as_structs) ? "class" : "struct",
+						   tconf.type_spacing - 7,
+						   type__name(ctype), name ?: "");
 		} else {
 			struct class *cclass = tag__class(type);
 
