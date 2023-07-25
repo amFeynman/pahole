@@ -1537,14 +1537,13 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 	const uint16_t t = type->namespace.tag.tag;
 	size_t printed;
 	if (cconf.enable_graph) {
-		printed = fprintf(fp, "STRUCT_START%sSTNAME_START%s%s%s%sSTNAME_END",
+		char buf[256] ={0};
+		sprintf(buf, "%lx", (unsigned long)type + (unsigned long)cu + (unsigned long)buf);
+		printed = fprintf(fp, "\"%s%s%s%s%s\"",
 			 cconf.prefix ?: "", cconf.prefix ? " " : "",
-			 ((cconf.classes_as_structs ||
-			   t == DW_TAG_structure_type) ? "struct" :
-			  t == DW_TAG_class_type ? "class" :
-						"interface"),
-			 type__name(type) ? " " : "",
-			 type__name(type) ?: "");
+			 ((cconf.classes_as_structs || t == DW_TAG_structure_type) ? "struct" : t == DW_TAG_class_type ? "class" : "interface"),
+			 type__name(type) ? " " : " ",
+			 type__name(type) ? type__name(type) : buf);
 	} else {
 		printed = fprintf(fp, "%s%s%s%s%s",
 					 cconf.prefix ?: "", cconf.prefix ? " " : "",
@@ -1598,9 +1597,18 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 			printed += tag__id_not_found_fprintf(fp, tag_pos->type);
 	}
 
-	if (cconf.enable_graph)
-		printed += fprintf(fp, " [label=\n");
-	else
+	if (cconf.enable_graph && type__name(type)) {
+		printed += fprintf(fp, " [label=\" {");
+		printed += fprintf(fp, "%s%s%s%s%s",
+		 cconf.prefix ?: "", cconf.prefix ? " " : "",
+		 ((cconf.classes_as_structs ||
+		   t == DW_TAG_structure_type) ? "struct" :
+		  t == DW_TAG_class_type ? "class" :
+					"interface"),
+		 type__name(type) ? " " : "",
+		 type__name(type) ?: "");
+		printed += fprintf(fp, "|");
+	} else
 		printed += fprintf(fp, " {\n");
 
 	if (class->pre_bit_hole > 0 && !cconf.suppress_comments) {
@@ -1953,7 +1961,7 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 				   type->size, sum_bytes, sum_bits, sum_holes, sum_bit_holes, size_diff);
 out:
 	if (cconf.enable_graph) {
-		printed += fprintf(fp, "%.*sSTRUCT_END ]", indent, tabs);
+		printed += fprintf(fp, "%.*s}\"]", indent, tabs);
 	} else {
 		printed += fprintf(fp, "%.*s}", indent, tabs);
 	}
