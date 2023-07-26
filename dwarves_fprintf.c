@@ -1143,8 +1143,15 @@ static size_t union__fprintf(struct type *type, const struct cu *cu,
 
 	if (conf->prefix != NULL)
 		printed += fprintf(fp, "%s ", conf->prefix);
-	printed += fprintf(fp, "union%s%s {\n", type__name(type) ? " " : "",
-			   type__name(type) ?: "");
+	if (conf->enable_graph) {
+		char buf[256] ={0};
+		sprintf(buf, "%lx", (unsigned long)type + (unsigned long)cu + (unsigned long)buf);
+		printed += fprintf(fp, "\"union%s%s\" {\n", type__name(type) ? " " : " ",
+				   type__name(type) ?: buf);
+	} else {
+		printed += fprintf(fp, "union%s%s {\n", type__name(type) ? " " : "",
+				   type__name(type) ?: "");
+	}
 
 	uconf = *conf;
 	uconf.indent = indent + 1;
@@ -1960,7 +1967,7 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 				   cconf.indent, tabs,
 				   type->size, sum_bytes, sum_bits, sum_holes, sum_bit_holes, size_diff);
 out:
-	if (cconf.enable_graph) {
+	if (cconf.enable_graph && type__name(type)) {
 		printed += fprintf(fp, "%.*s}\"]", indent, tabs);
 	} else {
 		printed += fprintf(fp, "%.*s}", indent, tabs);
