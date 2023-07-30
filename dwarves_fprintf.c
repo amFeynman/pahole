@@ -987,7 +987,7 @@ member_print:
 	    tag__is_enumeration(type)) {
 		printed += type__fprintf(type, cu, NULL, &sconf, fp);
 
-		if (name) {
+		if (name && !conf->enable_graph) {
 			if (!type__name(tag__type(type)))
 				printed += fprintf(fp, " ");
 			printed += fprintf(fp, "%s", name);
