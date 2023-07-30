@@ -1145,10 +1145,11 @@ static size_t union__fprintf(struct type *type, const struct cu *cu,
 	if (conf->prefix != NULL)
 		printed += fprintf(fp, "%s ", conf->prefix);
 	if (conf->enable_graph) {
-		char buf[256] ={0};
-		sprintf(buf, "%lx", (unsigned long)type + (unsigned long)cu + (unsigned long)buf);
-		printed += fprintf(fp, "\"union%s%s\" {\n", type__name(type) ? " " : " ",
-				   type__name(type) ?: buf);
+		if (type__name(type))
+			printed += fprintf(fp, "\"union%s%s\" {\n", type__name(type) ? " " : " ",
+					   type__name(type));
+		else
+			printed += fprintf(fp, "%s ", "{\n");
 	} else {
 		printed += fprintf(fp, "union%s%s {\n", type__name(type) ? " " : "",
 				   type__name(type) ?: "");
@@ -1604,7 +1605,7 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 	}
 
 	if (cconf.enable_graph && type__name(type)) {
-		printed += fprintf(fp, " [label=\" {");
+		printed += fprintf(fp, " [label=\"");
 		printed += fprintf(fp, "%s%s%s%s%s",
 		 cconf.prefix ?: "", cconf.prefix ? " " : "",
 		 ((cconf.classes_as_structs ||
@@ -1967,7 +1968,7 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 				   type->size, sum_bytes, sum_bits, sum_holes, sum_bit_holes, size_diff);
 out:
 	if (cconf.enable_graph && type__name(type)) {
-		printed += fprintf(fp, "%.*s}\"]", indent, tabs);
+		printed += fprintf(fp, "%.*s\"]", indent, tabs);
 	} else {
 		printed += fprintf(fp, "%.*s}", indent, tabs);
 	}
