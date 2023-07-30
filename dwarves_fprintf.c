@@ -1021,7 +1021,7 @@ size_print:
 	if ((tag__is_union(type) || tag__is_struct(type) ||
 	     tag__is_enumeration(type)) &&
 		/* Look if is a type defined inline */
-	    type__name(tag__type(type)) == NULL) {
+	    type__name(tag__type(type)) == NULL && !conf->enable_graph) {
 		if (!sconf.suppress_offset_comment) {
 			/* Check if this is a anonymous union */
 			int slen = member_alignment_printed + (cm_name ? (int)strlen(cm_name) : -1);
@@ -1034,8 +1034,8 @@ size_print:
 
 			if (conf->enable_graph)
 					printed += fprintf(fp, sconf.hex_fmt ?
-									"/*%x%s" :
-									"/*%u%s", offset, member->bitfield_size ? "":"_");
+									"%x%s" :
+									"%u%s", offset, member->bitfield_size ? "":"_");
 			else
 					printed += fprintf(fp, sconf.hex_fmt ?
 									"%*s/* %#5x" :
@@ -1058,10 +1058,11 @@ size_print:
 			}
 
 			if (conf->enable_graph)
-					printed += fprintf(fp, sconf.hex_fmt ?  "%x*/" : "%u*/ ", size);
+					printed += fprintf(fp, sconf.hex_fmt ?  "%x " : "%u ", size);
 			else
 					printed += fprintf(fp, sconf.hex_fmt ?  " %#*x */" : " %*u */", size_spacing, size);
 		}
+	} else if (type__name(tag__type(type)) == NULL && conf->enable_graph) {
 	} else {
 		int spacing = sconf.type_spacing + sconf.name_spacing - printed;
 
@@ -1075,7 +1076,7 @@ size_print:
 
 			if (conf->enable_graph)
 					printed += fprintf(fp, sconf.hex_fmt ?
-									"/*%x%s" : "/*%u%s",
+									"%x%s" : "%u%s",
 									offset, member->bitfield_size ? "":"_");
 			else
 					printed += fprintf(fp, sconf.hex_fmt ?
@@ -1097,7 +1098,7 @@ size_print:
 
 			if (conf->enable_graph)
 					printed += fprintf(fp, sconf.hex_fmt ?
-									"%x*/" : "%u*/ ",
+									"%x " : "%u ",
 									size);
 			else
 					printed += fprintf(fp, sconf.hex_fmt ?
@@ -1542,15 +1543,13 @@ static size_t __class__fprintf(struct class *class, const struct cu *cu,
 	const char *current_accessibility = NULL;
 	struct conf_fprintf cconf = conf ? *conf : conf_fprintf__defaults;
 	const uint16_t t = type->namespace.tag.tag;
-	size_t printed;
+	size_t printed = 0;
 	if (cconf.enable_graph) {
-		char buf[256] ={0};
-		sprintf(buf, "%lx", (unsigned long)type + (unsigned long)cu + (unsigned long)buf);
-		printed = fprintf(fp, "\"%s%s%s%s%s\"",
-			 cconf.prefix ?: "", cconf.prefix ? " " : "",
-			 ((cconf.classes_as_structs || t == DW_TAG_structure_type) ? "struct" : t == DW_TAG_class_type ? "class" : "interface"),
-			 type__name(type) ? " " : " ",
-			 type__name(type) ? type__name(type) : buf);
+		if (type__name(type))
+			printed = fprintf(fp, "\"%s%s%s%s%s\"",
+				 cconf.prefix ?: "", cconf.prefix ? " " : "",
+				 ((cconf.classes_as_structs || t == DW_TAG_structure_type) ? "struct" : t == DW_TAG_class_type ? "class" : "interface"),
+				 " ", type__name(type));
 	} else {
 		printed = fprintf(fp, "%s%s%s%s%s",
 					 cconf.prefix ?: "", cconf.prefix ? " " : "",
